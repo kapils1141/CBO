@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lloyds-green: #006a4d;
+  --color-lloyds-light: #c3d600;
+  --color-lloyds-dark: #004d38;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --lloyds-green: #006a4d;
+  --lloyds-light: #c3d600;
+}
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+}
+
+.bg-lloyds-gradient {
+  background: linear-gradient(135deg, #006a4d 0%, #004d38 100%);
+}
+
+.login-card-shadow {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom focus ring for lloyds */
+.focus-lloyds {
+  @apply focus:ring-2 focus:ring-lloyds-green/20 focus:border-lloyds-green outline-none transition-all;
+}

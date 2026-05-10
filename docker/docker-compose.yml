@@ -1,0 +1,40 @@
+services:
+  # 🔹 Directory Services (LDAP)
+  ds:
+    platform: linux/amd64
+    build: ./ds
+    container_name: ds
+    ports:
+      - "1389:1389"
+      - "4444:4444"
+    networks:
+      - forgerock-net
+
+  # 🔹 Access Management (Auth Server)
+  am:
+    build: ./am
+    container_name: am
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ds
+    networks:
+      - forgerock-net
+
+  # 🔹 Identity Gateway (Reverse Proxy)
+  ig:
+    build: ./ig
+    container_name: ig
+    ports:
+      - "8081:8080"
+    environment:
+      - AM_URL=http://am:8080/openam
+    depends_on:
+      - am
+    networks:
+      - forgerock-net
+
+# 🔗 Shared network
+networks:
+  forgerock-net:
+    driver: bridge
