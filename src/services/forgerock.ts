@@ -1,32 +1,24 @@
 import { Config, FRAuth, TokenManager, UserManager } from '@forgerock/javascript-sdk';
 
-/**
- * ForgeRock Service Configuration
- * In a real application, these values should be moved to .env or a config file.
- */
 export const initForgeRock = () => {
     Config.set({
         serverConfig: {
-            baseUrl: 'https://openam-lloyds.forgerock.io/am', // Replace with your ForgeRock AM URL
+            baseUrl: 'http://openam.lloyds.com:8080/openam',
             timeout: 10000,
         },
-        realmPath: 'root',
+        realmPath: 'commercial-banking',
         clientId: 'WebMerchantApp',
-        redirectUri: window.location.origin + '/callback',
+        redirectUri: 'http://cbonline.lloyds.com:3000/callback',
         scope: 'openid profile email',
+        tree: 'Login',
     });
 };
 
 export const forgerockService = {
-    /**
-     * Start the authentication flow
-     */
     async login(username?: string, password?: string) {
         try {
-            // This initiates/continues the ForgeRock authentication tree
             const step = await FRAuth.next();
-            
-            // If the tree requires username/password, we can pre-fill if provided
+
             if (step.getCallbacks().length > 0) {
                 if (username) step.getCallbackOfType('NameCallback').setName(username);
                 if (password) step.getCallbackOfType('PasswordCallback').setPassword(password);
@@ -39,24 +31,19 @@ export const forgerockService = {
         }
     },
 
-    /**
-     * Get the authenticated user's details
-     * This demonstrates the user schema requested
-     */
     async getUserInfo() {
         try {
             const tokens = await TokenManager.getTokens();
             if (!tokens) throw new Error('No active session');
-            
+
             const user = await UserManager.getCurrentUser();
-            
-            // Map ForgeRock attributes to your requested schema
+
             return {
                 userId: user.sub,
                 username: user.preferred_username || user.name,
                 firstName: user.given_name,
                 lastName: user.family_name,
-                createdOn: user.created_at, // Map from internal metadata if available
+                createdOn: user.created_at,
                 updatedOn: new Date().toISOString(),
                 userStatus: 'ACTIVE',
                 userRole: user.roles?.[0] || 'USER'
@@ -71,17 +58,13 @@ export const forgerockService = {
         return FRAuth.logout();
     },
 
-    /**
-     * Check if the ForgeRock server is reachable
-     */
     async isSystemOnline(): Promise<boolean> {
         try {
-            // Check if we can reach the info endpoint or similar
-            const response = await fetch('https://openam-lloyds.forgerock.io/am/serverinfo/*', {
-                method: 'GET',
-                mode: 'cors',
-            });
-            return response.ok;
+            const response = await fetch(
+                'http://openam.lloyds.com:8080/openam/json/serverinfo/*',
+                { method: 'GET', mode: 'cors' }
+            );
+            return response.status === 200 || response.status === 401;
         } catch (err) {
             console.warn('ForgeRock server unreachable:', err);
             return false;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ArrowRight, Info, HelpCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { FRAuth, CallbackType } from '@forgerock/javascript-sdk';
 
 interface LoginFormProps {
   onLoginSuccess: (userId: string) => void;
@@ -12,21 +12,44 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) return;
-    
+
     setIsLoading(true);
     setError(null);
-    
-    // Simulate ForgeRock Authentication Call
-    // In production, this would use the ForgeRock SDK:
-    // FRAuth.next({ username, password })
-    setTimeout(() => {
+
+    try {
+      // Step 1 — Start the journey, get the Page Node callbacks
+      const firstStep = await FRAuth.next();
+
+      // Step 2 — Fill in username and password
+      firstStep.callbacks.forEach((callback) => {
+        if (callback.getType() === CallbackType.NameCallback) {
+          callback.setName(username);
+        }
+        if (callback.getType() === CallbackType.PasswordCallback) {
+          callback.setPassword(password);
+        }
+      });
+
+      // Step 3 — Submit credentials to ForgeRock
+      const nextStep = await FRAuth.next(firstStep);
+
+      // Step 4 — Check result
+      if (nextStep.type === 'LoginSuccess') {
+        onLoginSuccess(username);
+      } else if (nextStep.type === 'LoginFailure') {
+        setError('Invalid username or password. Please try again.');
+      } else {
+        setError('Authentication failed. Please try again.');
+      }
+    } catch (err) {
+      console.error('ForgeRock Login Error:', err);
+      setError('Unable to connect to authentication service. Please try again.');
+    } finally {
       setIsLoading(false);
-      // In this demo, any login is "successful" for the UI flow
-      onLoginSuccess(username);
-    }, 1500);
+    }
   };
 
   return (
@@ -46,7 +69,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                 {error}
               </div>
             )}
-            
+
             <div>
               <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2 flex justify-between">
                 Username
@@ -101,9 +124,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                 </>
               )}
             </button>
-            
+
             <p className="text-center">
-              <a href="#" className="text-sm text-lloyds-green hover:underline font-medium">Forgotten your log on details?</a>
+              <a href="#" className="text-sm text-lloyds-green hover:underline font-medium">
+                Forgotten your log on details?
+              </a>
             </p>
           </form>
         </div>

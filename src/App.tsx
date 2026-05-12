@@ -10,7 +10,7 @@ import { TwoFactorForm } from './components/TwoFactorForm';
 import { SessionTimer } from './components/SessionTimer';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, CheckCircle2, AlertTriangle, Phone } from 'lucide-react';
-import { forgerockService } from './services/forgerock';
+import { forgerockService, initForgeRock  } from './services/forgerock';
 
 type AuthStage = 'loading' | 'login' | '2fa' | 'success' | 'expired' | 'unavailable';
 
@@ -20,15 +20,16 @@ export default function App() {
 
   useEffect(() => {
     const checkSystem = async () => {
-      const isOnline = await forgerockService.isSystemOnline();
-      if (isOnline) {
-        setStage('login');
-      } else {
-        setStage('unavailable');
-      }
+        initForgeRock();  // ← Add this line
+        const isOnline = await forgerockService.isSystemOnline();
+        if (isOnline) {
+            setStage('login');
+        } else {
+            setStage('unavailable');
+        }
     };
     checkSystem();
-  }, []);
+}, []);
 
   const handleTimeout = () => {
     setStage('expired');
