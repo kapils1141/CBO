@@ -1,4 +1,10 @@
-import { Config, FRAuth, TokenManager, UserManager } from '@forgerock/javascript-sdk';
+import {
+    Config,
+    FRAuth,
+    FRStep,
+    TokenManager,
+    UserManager,
+} from '@forgerock/javascript-sdk';
 
 export const initForgeRock = () => {
     Config.set({
@@ -17,16 +23,38 @@ export const initForgeRock = () => {
 export const forgerockService = {
     async login(username?: string, password?: string) {
         try {
+            // Step 1 - Start authentication journey
             const step = await FRAuth.next();
 
-            if (step.getCallbacks().length > 0) {
-                if (username) step.getCallbackOfType('NameCallback').setName(username);
-                if (password) step.getCallbackOfType('PasswordCallback').setPassword(password);
-                return await FRAuth.next(step);
+            // Ensure this is an authentication step
+            if (step.type !== 'Step') {
+                return step;
             }
-            return step;
+
+            // Step 2 - Populate username/password callbacks
+            step.callbacks.forEach((callback: any) => {
+                if (callback.getType() === 'NameCallback' && username) {
+                    callback.setName(username);
+                }
+
+                if (callback.getType() === 'PasswordCallback' && password) {
+                    callback.setPassword(password);
+                }
+            });
+
+            // Step 3 - Submit credentials
+            return await FRAuth.next(step as FRStep);
         } catch (err) {
             console.error('ForgeRock Login Error:', err);
+            throw err;
+        }
+    },
+
+    async submitStep(step: FRStep) {
+        try {
+            return await FRAuth.next(step);
+        } catch (err) {
+            console.error('ForgeRock Step Submission Error:', err);
             throw err;
         }
     },
@@ -34,9 +62,12 @@ export const forgerockService = {
     async getUserInfo() {
         try {
             const tokens = await TokenManager.getTokens();
-            if (!tokens) throw new Error('No active session');
 
-            const user = await UserManager.getCurrentUser();
+            if (!tokens) {
+                throw new Error('No active session');
+            }
+
+            const user: any = await UserManager.getCurrentUser();
 
             return {
                 userId: user.sub,
@@ -46,7 +77,7 @@ export const forgerockService = {
                 createdOn: user.created_at,
                 updatedOn: new Date().toISOString(),
                 userStatus: 'ACTIVE',
-                userRole: user.roles?.[0] || 'USER'
+                userRole: user.roles?.[0] || 'USER',
             };
         } catch (err) {
             console.error('Failed to get user info:', err);
@@ -54,20 +85,34 @@ export const forgerockService = {
         }
     },
 
-    logout() {
-        return FRAuth.logout();
+    async logout() {
+        try {
+            // Clear browser storage
+            sessionStorage.clear();
+            localStorage.clear();
+
+            // Redirect to AM logout
+            window.location.href =
+                'http://openam.lloyds.com:8080/openam/XUI/#logout/';
+        } catch (err) {
+            console.error('Logout failed:', err);
+        }
     },
 
     async isSystemOnline(): Promise<boolean> {
         try {
             const response = await fetch(
                 'http://openam.lloyds.com:8080/openam/json/serverinfo/*',
-                { method: 'GET', mode: 'cors' }
+                {
+                    method: 'GET',
+                    mode: 'cors',
+                }
             );
+
             return response.status === 200 || response.status === 401;
         } catch (err) {
             console.warn('ForgeRock server unreachable:', err);
             return false;
         }
-    }
+    },
 };

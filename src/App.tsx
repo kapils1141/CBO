@@ -10,7 +10,8 @@ import { TwoFactorForm } from './components/TwoFactorForm';
 import { SessionTimer } from './components/SessionTimer';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, CheckCircle2, AlertTriangle, Phone } from 'lucide-react';
-import { forgerockService, initForgeRock  } from './services/forgerock';
+import { forgerockService, initForgeRock } from './services/forgerock';
+import { FRStep } from '@forgerock/javascript-sdk';
 
 type AuthStage = 'loading' | 'login' | '2fa' | 'success' | 'expired' | 'unavailable';
 
@@ -20,24 +21,32 @@ export default function App() {
 
   useEffect(() => {
     const checkSystem = async () => {
-        initForgeRock();  // ← Add this line
-        const isOnline = await forgerockService.isSystemOnline();
-        if (isOnline) {
-            setStage('login');
-        } else {
-            setStage('unavailable');
-        }
+      initForgeRock();  // ← Add this line
+      const isOnline = await forgerockService.isSystemOnline();
+      if (isOnline) {
+        setStage('login');
+      } else {
+        setStage('unavailable');
+      }
     };
     checkSystem();
-}, []);
+  }, []);
 
   const handleTimeout = () => {
     setStage('expired');
   };
 
-  const handleLoginSuccess = (id: string) => {
+  const [authStep, setAuthStep] = useState<FRStep | null>(null);
+
+  const handleLoginSuccess = (id: string, step?: FRStep) => {
     setUserId(id);
-    setStage('2fa');
+
+    if (step) {
+      setAuthStep(step);
+      setStage('2fa');
+    } else {
+      setStage('success');
+    }
   };
 
   const handle2FAVerify = (code: string) => {
@@ -69,10 +78,10 @@ export default function App() {
             Sorry, Commercial Banking Online is temporarily unavailable
           </h1>
           <p className="text-gray-600 mb-10 leading-relaxed text-lg">
-            We're currently performing maintenance or experiencing technical difficulties. 
+            We're currently performing maintenance or experiencing technical difficulties.
             Please try again later or contact our telephony support team.
           </p>
-          
+
           <div className="grid md:grid-cols-2 gap-6 w-full text-left mb-12">
             <div className="p-6 bg-gray-50 rounded-xl border border-gray-100 flex items-start gap-4">
               <Phone className="text-lloyds-green shrink-0 mt-1" size={20} />
@@ -89,8 +98,8 @@ export default function App() {
               </div>
             </div>
           </div>
-          
-          <button 
+
+          <button
             onClick={() => window.location.reload()}
             className="px-8 py-3 bg-lloyds-green text-white font-bold rounded-lg hover:bg-lloyds-dark transition-colors"
           >
@@ -104,7 +113,7 @@ export default function App() {
   if (stage === 'expired') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="bg-white p-8 rounded-xl shadow-xl max-w-sm w-full text-center border border-gray-100"
@@ -116,7 +125,7 @@ export default function App() {
           <p className="text-gray-500 mb-8 leading-relaxed">
             For your security, your session has timed out after 10 minutes of inactivity.
           </p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="w-full py-3 bg-lloyds-green text-white font-bold rounded-lg hover:bg-lloyds-dark transition-colors"
           >
@@ -130,7 +139,7 @@ export default function App() {
   if (stage === 'success') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 bg-lloyds-gradient">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white p-12 rounded-2xl shadow-2xl max-w-md w-full text-center"
@@ -166,9 +175,9 @@ export default function App() {
       {/* Abstract Background Elements */}
       <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-lloyds-green/5 blur-[120px] rounded-full -mr-24 -mt-24 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-lloyds-light/5 blur-[120px] rounded-full -ml-24 -mb-24 pointer-events-none" />
-      
+
       <Header />
-      
+
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
         <div className="w-full max-w-md mb-8 flex justify-between items-center">
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white px-3 py-1 rounded-full border border-gray-100">
@@ -176,11 +185,16 @@ export default function App() {
           </div>
           <SessionTimer initialMinutes={10} onTimeout={handleTimeout} />
         </div>
-        
+
         {stage === 'login' ? (
           <LoginForm onLoginSuccess={handleLoginSuccess} />
         ) : (
-          <TwoFactorForm phoneNumber="4482" onVerify={handle2FAVerify} />
+          authStep && (
+            <TwoFactorForm
+              step={authStep}
+              onSuccess={() => setStage('success')}
+            />
+          )
         )}
       </main>
 

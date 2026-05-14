@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ArrowRight, Info, HelpCircle } from 'lucide-react';
 import { FRAuth, CallbackType } from '@forgerock/javascript-sdk';
+import { FRStep } from '@forgerock/javascript-sdk';
 
 interface LoginFormProps {
-  onLoginSuccess: (userId: string) => void;
+  onLoginSuccess: (userId: string, step?: FRStep) => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
@@ -23,8 +24,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       // Step 1 — Start the journey, get the Page Node callbacks
       const firstStep = await FRAuth.next();
 
-      // Step 2 — Fill in username and password
-      firstStep.callbacks.forEach((callback) => {
+      if (firstStep.type !== 'Step') {
+        setError('Unexpected authentication response.');
+        setIsLoading(false);
+        return;
+      }
+
+      firstStep.callbacks.forEach((callback: any) => {
         if (callback.getType() === CallbackType.NameCallback) {
           callback.setName(username);
         }
@@ -42,7 +48,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       } else if (nextStep.type === 'LoginFailure') {
         setError('Invalid username or password. Please try again.');
       } else {
-        setError('Authentication failed. Please try again.');
+        // ForgeRock returned another auth step (TOTP)
+        onLoginSuccess(username, nextStep);
       }
     } catch (err) {
       console.error('ForgeRock Login Error:', err);
