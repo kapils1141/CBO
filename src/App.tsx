@@ -8,22 +8,26 @@ import { Header } from './components/Header';
 import { LoginForm } from './components/LoginForm';
 import { TwoFactorForm } from './components/TwoFactorForm';
 import { SessionTimer } from './components/SessionTimer';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { Lock, CheckCircle2, AlertTriangle, Phone } from 'lucide-react';
 import { forgerockService, initForgeRock } from './services/forgerock';
 import { FRStep } from '@forgerock/javascript-sdk';
 
 type AuthStage = 'loading' | 'login' | '2fa' | 'success' | 'expired' | 'unavailable';
+type ExpiredReason = 'idle' | 'absolute' | null;
 
 export default function App() {
   const [stage, setStage] = useState<AuthStage>('loading');
   const [userId, setUserId] = useState('');
+  const [authStep, setAuthStep] = useState<FRStep | null>(null);
+  const [expiredReason, setExpiredReason] = useState<ExpiredReason>(null);
 
   useEffect(() => {
     const checkSystem = async () => {
-      initForgeRock();  // ← Add this line
+      initForgeRock();
       const isOnline = await forgerockService.isSystemOnline();
       if (isOnline) {
+        window.history.pushState({}, '', '/PrimaryAuth');
         setStage('login');
       } else {
         setStage('unavailable');
@@ -32,15 +36,8 @@ export default function App() {
     checkSystem();
   }, []);
 
-  const handleTimeout = () => {
-    setStage('expired');
-  };
-
-  const [authStep, setAuthStep] = useState<FRStep | null>(null);
-
   const handleLoginSuccess = (id: string, step?: FRStep) => {
     setUserId(id);
-
     if (step) {
       setAuthStep(step);
       setStage('2fa');
@@ -49,10 +46,16 @@ export default function App() {
     }
   };
 
-  const handle2FAVerify = (code: string) => {
-    setTimeout(() => {
-      setStage('success');
-    }, 1500);
+  const handleAbsoluteTimeout = () => {
+    forgerockService.logout();
+    setExpiredReason('absolute');
+    setStage('expired');
+  };
+
+  const handleIdleTimeout = () => {
+    forgerockService.logout();
+    setExpiredReason('idle');
+    setStage('expired');
   };
 
   if (stage === 'loading') {
@@ -81,7 +84,6 @@ export default function App() {
             We're currently performing maintenance or experiencing technical difficulties.
             Please try again later or contact our telephony support team.
           </p>
-
           <div className="grid md:grid-cols-2 gap-6 w-full text-left mb-12">
             <div className="p-6 bg-gray-50 rounded-xl border border-gray-100 flex items-start gap-4">
               <Phone className="text-lloyds-green shrink-0 mt-1" size={20} />
@@ -98,7 +100,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
           <button
             onClick={() => window.location.reload()}
             className="px-8 py-3 bg-lloyds-green text-white font-bold rounded-lg hover:bg-lloyds-dark transition-colors"
@@ -123,7 +124,9 @@ export default function App() {
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Session Expired</h2>
           <p className="text-gray-500 mb-8 leading-relaxed">
-            For your security, your session has timed out after 10 minutes of inactivity.
+            {expiredReason === 'idle'
+              ? 'Your session expired due to 10 minutes of inactivity. Please log in again to continue.'
+              : 'Your 8-hour session has ended. Please log in again to continue.'}
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -139,6 +142,13 @@ export default function App() {
   if (stage === 'success') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 bg-lloyds-gradient">
+        {/* Session timers — only active after full login */}
+        <SessionTimer
+          absoluteMinutes={480}
+          idleMinutes={10}
+          onAbsoluteTimeout={handleAbsoluteTimeout}
+          onIdleTimeout={handleIdleTimeout}
+        />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -165,7 +175,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 relative overflow-hidden font-sans">
-      {/* Subdomain Context Banner (Simulation) */}
+      {/* Subdomain Context Banner */}
       {stage === '2fa' && (
         <div className="bg-blue-600 text-white text-[10px] py-1 text-center font-bold tracking-[0.2em] uppercase z-50">
           Secure Portal (cbsecure.lloydsbank.com)
@@ -183,7 +193,6 @@ export default function App() {
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white px-3 py-1 rounded-full border border-gray-100">
             {stage === 'login' ? 'Authentication Step 1 of 2' : 'Security Check 2 of 2'}
           </div>
-          <SessionTimer initialMinutes={10} onTimeout={handleTimeout} />
         </div>
 
         {stage === 'login' ? (

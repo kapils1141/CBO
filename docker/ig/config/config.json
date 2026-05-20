@@ -1,0 +1,41 @@
+{
+  "heap": [
+    {
+      "name": "ClientHandler",
+      "type": "ClientHandler",
+      "config": {
+        "hostnameVerifier": "ALLOW_ALL",
+        "connectionTimeout": "10 seconds",
+        "soTimeout": "30 seconds"
+      }
+    },
+    {
+      "name": "SystemAndEnvSecretStore",
+      "type": "SystemAndEnvSecretStore"
+    },
+    {
+      "name": "AmService-CBOAM",
+      "type": "AmService",
+      "config": {
+        "url": "http://am:8080/openam",
+        "realm": "/commercial-banking",
+        "agentUsername": "ig-agent",
+        "agentPasswordSecretId": "agent.secret.id",
+        "secretsProvider": "SystemAndEnvSecretStore",
+        "sessionCache": {
+          "enabled": true,
+          "maxTimeout": "3 minutes"
+        }
+      }
+    },
+    {
+      "name": "AmJwkSetSecretStore",
+      "type": "JwkSetSecretStore",
+      "config": {
+        "jwkUrl": "http://am:8080/openam/oauth2/commercial-banking/connect/jwk_uri",
+        "handler": "ClientHandler",
+        "secretsQueryInterval": "5 minutes"
+      }
+    }
+  ]
+}

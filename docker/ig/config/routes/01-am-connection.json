@@ -1,0 +1,37 @@
+{
+  "name": "01-am-connection",
+  "comment": "AM agent pass-through. Forwards /openam/* requests to AM and exposes the IG-AM service binding for ig-agent in realm commercial-banking.",
+  "condition": "${matches(request.uri.path, '^/openam/')}",
+  "baseURI": "http://am:8080",
+  "heap": [
+    {
+      "name": "AmAgentService",
+      "type": "AmService",
+      "config": {
+        "url": "http://am:8080/openam",
+        "realm": "/commercial-banking",
+        "agentUsername": "ig-agent",
+        "agentPasswordSecretId": "agent.secret.id",
+        "secretsProvider": "SystemAndEnvSecretStore"
+      }
+    }
+  ],
+  "handler": {
+    "type": "Chain",
+    "config": {
+      "filters": [
+        {
+          "type": "HeaderFilter",
+          "config": {
+            "messageType": "REQUEST",
+            "remove": ["X-Forwarded-For"],
+            "add": {
+              "X-Forwarded-For": ["${contexts.client.remoteAddress}"]
+            }
+          }
+        }
+      ],
+      "handler": "ClientHandler"
+    }
+  }
+}

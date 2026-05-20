@@ -8,7 +8,7 @@ COPY ./opendj /opt/opendj
 ENV PATH="/opt/opendj/bin:${PATH}"
 
 COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh
+RUN sed -i 's/\r//' /opt/entrypoint.sh && chmod +x /opt/entrypoint.sh
 
 # Change this line to call bash explicitly
 ENTRYPOINT ["/bin/bash", "/opt/entrypoint.sh"]

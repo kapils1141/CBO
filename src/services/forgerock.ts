@@ -2,6 +2,7 @@ import {
     Config,
     FRAuth,
     FRStep,
+    FRUser,
     TokenManager,
     UserManager,
 } from '@forgerock/javascript-sdk';
@@ -23,26 +24,21 @@ export const initForgeRock = () => {
 export const forgerockService = {
     async login(username?: string, password?: string) {
         try {
-            // Step 1 - Start authentication journey
             const step = await FRAuth.next();
 
-            // Ensure this is an authentication step
             if (step.type !== 'Step') {
                 return step;
             }
 
-            // Step 2 - Populate username/password callbacks
             step.callbacks.forEach((callback: any) => {
                 if (callback.getType() === 'NameCallback' && username) {
                     callback.setName(username);
                 }
-
                 if (callback.getType() === 'PasswordCallback' && password) {
                     callback.setPassword(password);
                 }
             });
 
-            // Step 3 - Submit credentials
             return await FRAuth.next(step as FRStep);
         } catch (err) {
             console.error('ForgeRock Login Error:', err);
@@ -85,17 +81,25 @@ export const forgerockService = {
         }
     },
 
-    async logout() {
+    // Silent logout — clears AM session in background, no redirect
+    // Used on login page load to clear any existing session
+    async logoutSilent(): Promise<void> {
         try {
-            // Clear browser storage
-            sessionStorage.clear();
-            localStorage.clear();
-
-            // Redirect to AM logout
-            window.location.href =
-                'http://openam.lloyds.com:8080/openam/XUI/#logout/';
+            await FRUser.logout();
         } catch (err) {
-            console.error('Logout failed:', err);
+            // Ignore — session may already be expired or not exist
+        }
+    },
+
+    // Full logout — clears AM session then redirects to login page
+    // Used when session timer expires or user explicitly logs out
+    async logout(): Promise<void> {
+        try {
+            await FRUser.logout();
+        } catch (err) {
+            // Ignore errors
+        } finally {
+            window.location.href = 'http://cbonline.lloyds.com:3000/PrimaryAuth';
         }
     },
 

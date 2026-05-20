@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldCheck, ArrowRight, Info, HelpCircle } from 'lucide-react';
-import { FRAuth, CallbackType } from '@forgerock/javascript-sdk';
-import { FRStep } from '@forgerock/javascript-sdk';
+import { FRAuth, CallbackType, FRStep } from '@forgerock/javascript-sdk';
+import { forgerockService } from '../services/forgerock';
 
 interface LoginFormProps {
   onLoginSuccess: (userId: string, step?: FRStep) => void;
@@ -12,6 +12,28 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [initialStep, setInitialStep] = useState<FRStep | null>(null);
+
+  // On page load: silently clear any existing session then pre-initialise journey
+  useEffect(() => {
+    const initJourney = async () => {
+      try {
+        // Silently kill any existing session — no redirect
+        await forgerockService.logoutSilent();
+
+        // Pre-initialise the journey
+        const step = await FRAuth.next();
+        if (step.type === 'Step') {
+          setInitialStep(step);
+        }
+      } catch (err) {
+        // Silent fail — handleSubmit will start fresh if needed
+        console.warn('Journey pre-initialisation failed:', err);
+      }
+    };
+
+    initJourney();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,12 +43,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
     setError(null);
 
     try {
-      // Step 1 — Start the journey, get the Page Node callbacks
-      const firstStep = await FRAuth.next();
+      // Use pre-initialised step if available, otherwise start fresh
+      const firstStep = initialStep ?? await FRAuth.next();
 
       if (firstStep.type !== 'Step') {
         setError('Unexpected authentication response.');
-        setIsLoading(false);
         return;
       }
 
@@ -39,21 +60,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
         }
       });
 
-      // Step 3 — Submit credentials to ForgeRock
       const nextStep = await FRAuth.next(firstStep);
 
-      // Step 4 — Check result
       if (nextStep.type === 'LoginSuccess') {
         onLoginSuccess(username);
       } else if (nextStep.type === 'LoginFailure') {
         setError('Invalid username or password. Please try again.');
+        setInitialStep(null);
       } else {
-        // ForgeRock returned another auth step (TOTP)
         onLoginSuccess(username, nextStep);
       }
     } catch (err) {
       console.error('ForgeRock Login Error:', err);
       setError('Unable to connect to authentication service. Please try again.');
+      setInitialStep(null);
     } finally {
       setIsLoading(false);
     }

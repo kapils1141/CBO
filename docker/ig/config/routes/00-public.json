@@ -1,0 +1,8 @@
+{
+  "name": "00-public",
+  "comment": "Unprotected pass-through for login page and static assets. Must be first so session checks on route 02 do not cause redirect loops.",
+  "condition": "${matches(request.uri.path, '^/$') or matches(request.uri.path, '^/PrimaryAuth') or matches(request.uri.path, '^/static/') or matches(request.uri.path, '^/favicon') or matches(request.uri.path, '^/manifest')}",
+  "baseURI": "http://cbonline.lloyds.com:3000",
+  "heap": [],
+  "handler": "ClientHandler"
+}
