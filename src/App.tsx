@@ -7,14 +7,21 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { LoginForm } from './components/LoginForm';
 import { TwoFactorForm } from './components/TwoFactorForm';
-import { SessionTimer } from './components/SessionTimer';
+import { Dashboard } from './components/dashboard/Dashboard';
 import { motion } from 'motion/react';
 import { Lock, CheckCircle2, AlertTriangle, Phone } from 'lucide-react';
 import { forgerockService, initForgeRock } from './services/forgerock';
-import { FRStep } from '@forgerock/javascript-sdk';
+import { FRStep, TokenManager } from '@forgerock/javascript-sdk';
 
-type AuthStage = 'loading' | 'login' | '2fa' | 'success' | 'expired' | 'unavailable';
+type AuthStage = 'loading' | 'login' | '2fa' | 'success' | 'dashboard' | 'expired' | 'unavailable';
 type ExpiredReason = 'idle' | 'absolute' | null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE-LEVEL FLAGS — outside the component
+// These survive React StrictMode double-mount and component re-renders
+// ─────────────────────────────────────────────────────────────────────────────
+let callbackHandled = false;
+let tokenAcquisitionInProgress = false;
 
 export default function App() {
   const [stage, setStage] = useState<AuthStage>('loading');
@@ -25,6 +32,64 @@ export default function App() {
   useEffect(() => {
     const checkSystem = async () => {
       initForgeRock();
+
+      // ─── Handle OAuth2 callback ───────────────────────────────────────────
+      if (window.location.pathname === '/callback') {
+        // When the SDK uses getAuthCodeByIframe, it loads this page inside a
+        // hidden iframe and reads the auth code directly from the iframe URL.
+        // If we call getTokens() here we create nested iframes that prevent
+        // the parent SDK from ever getting the code (causing the redirect loop).
+        if (window !== window.top) {
+          return;
+        }
+
+        if (callbackHandled) {
+          console.log('Callback already handled, skipping');
+          return;
+        }
+        callbackHandled = true;
+
+        try {
+          await TokenManager.getTokens({ login: 'redirect' } as any);
+
+          const savedUserId = sessionStorage.getItem('cbo_user_id') ?? '';
+          sessionStorage.removeItem('cbo_user_id');
+          tokenAcquisitionInProgress = false;
+          window.history.replaceState({}, '', '/dashboard');
+          setUserId(savedUserId);
+          setStage('dashboard');
+        } catch (err) {
+          console.error('Callback token exchange failed:', err);
+          callbackHandled = false;
+          tokenAcquisitionInProgress = false;
+          sessionStorage.removeItem('cbo_user_id');
+          window.history.replaceState({}, '', '/PrimaryAuth');
+          setStage('login');
+        }
+        return;
+      }
+
+      // ─── Handle direct navigation to /dashboard ───────────────────────────
+      if (window.location.pathname === '/dashboard') {
+        // Read tokens directly from localStorage — no SDK call
+        const stored = localStorage.getItem('FR-SDK-WebMerchantApp');
+        if (stored) {
+          try {
+            const tokens = JSON.parse(stored);
+            if (tokens?.accessToken) {
+              const savedUserId = sessionStorage.getItem('cbo_user_id') ?? '';
+              setUserId(savedUserId);
+              setStage('dashboard');
+              return;
+            }
+          } catch {
+            // Invalid stored data
+          }
+        }
+        window.history.replaceState({}, '', '/PrimaryAuth');
+      }
+
+      // ─── Normal startup ───────────────────────────────────────────────────
       const isOnline = await forgerockService.isSystemOnline();
       if (isOnline) {
         window.history.pushState({}, '', '/PrimaryAuth');
@@ -36,14 +101,47 @@ export default function App() {
     checkSystem();
   }, []);
 
-  const handleLoginSuccess = (id: string, step?: FRStep) => {
+  const acquireTokens = async (id: string) => {
+    callbackHandled = false;
+
+    if (tokenAcquisitionInProgress) {
+      console.warn('Token acquisition already in progress, skipping');
+      return;
+    }
+    tokenAcquisitionInProgress = true;
+    sessionStorage.setItem('cbo_user_id', id);
+
+    try {
+      await TokenManager.getTokens({ login: 'redirect' } as any);
+      // Reaches here only when the SDK obtained tokens via its silent iframe
+      // approach (getAuthCodeByIframe) — no page redirect occurred.
+      const savedUserId = sessionStorage.getItem('cbo_user_id') ?? '';
+      sessionStorage.removeItem('cbo_user_id');
+      tokenAcquisitionInProgress = false;
+      window.history.replaceState({}, '', '/dashboard');
+      setUserId(savedUserId);
+      setStage('dashboard');
+    } catch (err) {
+      console.warn('Token acquisition failed:', err);
+      tokenAcquisitionInProgress = false;
+      sessionStorage.removeItem('cbo_user_id');
+      callbackHandled = false;
+      setStage('login');
+    }
+  };
+
+  const handleLoginSuccess = async (id: string, step?: FRStep) => {
     setUserId(id);
     if (step) {
       setAuthStep(step);
       setStage('2fa');
     } else {
-      setStage('success');
+      await acquireTokens(id);
     }
+  };
+
+  const handle2FASuccess = async () => {
+    await acquireTokens(userId);
   };
 
   const handleAbsoluteTimeout = () => {
@@ -139,16 +237,19 @@ export default function App() {
     );
   }
 
+  if (stage === 'dashboard') {
+    return (
+      <Dashboard
+        userId={userId}
+        onAbsoluteTimeout={handleAbsoluteTimeout}
+        onIdleTimeout={handleIdleTimeout}
+      />
+    );
+  }
+
   if (stage === 'success') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 bg-lloyds-gradient">
-        {/* Session timers — only active after full login */}
-        <SessionTimer
-          absoluteMinutes={480}
-          idleMinutes={10}
-          onAbsoluteTimeout={handleAbsoluteTimeout}
-          onIdleTimeout={handleIdleTimeout}
-        />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -165,7 +266,13 @@ export default function App() {
             <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Authenticated User</p>
             <p className="text-lg font-bold text-gray-800">{userId}</p>
           </div>
-          <button className="w-full py-4 bg-lloyds-green text-white font-bold rounded-xl hover:bg-lloyds-dark transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+          <button
+            onClick={() => {
+              window.history.pushState({}, '', '/dashboard');
+              setStage('dashboard');
+            }}
+            className="w-full py-4 bg-lloyds-green text-white font-bold rounded-xl hover:bg-lloyds-dark transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+          >
             Enter Dashboard
           </button>
         </motion.div>
@@ -175,14 +282,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 relative overflow-hidden font-sans">
-      {/* Subdomain Context Banner */}
-      {stage === '2fa' && (
-        <div className="bg-blue-600 text-white text-[10px] py-1 text-center font-bold tracking-[0.2em] uppercase z-50">
-          Secure Portal (cbsecure.lloydsbank.com)
-        </div>
-      )}
-
-      {/* Abstract Background Elements */}
+      
       <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-lloyds-green/5 blur-[120px] rounded-full -mr-24 -mt-24 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-lloyds-light/5 blur-[120px] rounded-full -ml-24 -mb-24 pointer-events-none" />
 
@@ -201,7 +301,7 @@ export default function App() {
           authStep && (
             <TwoFactorForm
               step={authStep}
-              onSuccess={() => setStage('success')}
+              onSuccess={handle2FASuccess}
             />
           )
         )}

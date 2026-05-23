@@ -1,51 +1,40 @@
 {
   "name": "03-api-gateway",
   "comment": "JWT Policy Enforcement Point for /api/* paths. Validates RS256 Bearer token via AM JWKS, injects claims as headers, sets session cookies, then proxies to Spring Boot.",
-  "condition": "${matches(request.uri.path, '^/api/')}",
+  "condition": "${find(request.uri.path, '^/api/')}",
   "baseURI": "http://host.docker.internal:8082",
-  "heap": [
-    {
-      "name": "JwtMissingHandler",
-      "type": "StaticResponseHandler",
-      "config": {
-        "status": 401,
-        "reason": "Unauthorized",
-        "headers": {
-          "Content-Type": ["application/json"],
-          "WWW-Authenticate": ["Bearer realm=\"commercial-banking\""]
-        },
-        "entity": "{\"error\":\"unauthorized\",\"message\":\"A valid JWT Bearer token is required\"}"
-      }
-    }
-  ],
+  "heap": [],
   "handler": {
     "type": "Chain",
     "config": {
       "filters": [
         {
-          "comment": "Block early if no Authorization header is present",
-          "type": "ConditionalFilter",
-          "config": {
-            "condition": "${empty request.headers['Authorization']}",
-            "delegate": "JwtMissingHandler"
-          }
-        },
-        {
-          "comment": "Verify RS256 signature using AM's JWKS endpoint; returns 401 on failure",
+          "comment": "Verify RS256 JWT signature",
           "type": "JwtValidationFilter",
           "config": {
             "jwt": "${request.headers['Authorization'][0].substring(7)}",
             "verificationSecretId": "am.rs256.verification",
             "secretsProvider": "AmJwkSetSecretStore",
-            "failureHandler": "JwtMissingHandler"
+            "failureHandler": {
+              "type": "StaticResponseHandler",
+              "config": {
+                "status": 401,
+                "reason": "Unauthorized",
+                "headers": {
+                  "Content-Type": ["application/json"],
+                  "WWW-Authenticate": ["Bearer realm=\"commercial-banking\""]
+                },
+                "entity": "{\"error\":\"unauthorized\",\"message\":\"A valid JWT Bearer token is required\"}"
+              }
+            }
           }
         },
         {
-          "comment": "Decode JWT payload and inject claims as X-* headers; set response cookies",
+          "comment": "Decode JWT and inject as headers",
           "type": "ScriptableFilter",
           "config": {
             "type": "application/x-groovy",
-            "file": "scripts/groovy/inject-jwt-headers.groovy"
+            "file": "inject-jwt-headers.groovy"
           }
         }
       ],

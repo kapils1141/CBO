@@ -28,6 +28,8 @@ services:
     container_name: ig
     ports:
       - "8081:8080"
+    extra_hosts:
+      - "openam.lloyds.com:host-gateway"
     environment:
       - AM_URL=http://am:8080/openam
       - AGENT_SECRET_ID=aWctYWdlbnQtcGFzc3dvcmQ=

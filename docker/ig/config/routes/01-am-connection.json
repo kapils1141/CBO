@@ -1,17 +1,19 @@
 {
   "name": "01-am-connection",
-  "comment": "AM agent pass-through. Forwards /openam/* requests to AM and exposes the IG-AM service binding for ig-agent in realm commercial-banking.",
-  "condition": "${matches(request.uri.path, '^/openam/')}",
-  "baseURI": "http://am:8080",
+  "comment": "AM agent pass-through.",
+  "condition": "${find(request.uri.path, '^/openam/')}",
+  "baseURI": "http://openam.lloyds.com:8080",
   "heap": [
     {
       "name": "AmAgentService",
       "type": "AmService",
       "config": {
-        "url": "http://am:8080/openam",
+        "url": "http://openam.lloyds.com:8080/openam",
         "realm": "/commercial-banking",
-        "agentUsername": "ig-agent",
-        "agentPasswordSecretId": "agent.secret.id",
+        "agent": {
+          "username": "ig-agent",
+          "passwordSecretId": "agent.secret.id"
+        },
         "secretsProvider": "SystemAndEnvSecretStore"
       }
     }

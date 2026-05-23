@@ -10,12 +10,12 @@ import {
 export const initForgeRock = () => {
     Config.set({
         serverConfig: {
-            baseUrl: 'http://openam.lloyds.com:8080/openam',
+            baseUrl: 'https://cbonline.lloyds.com:3000/openam',
             timeout: 10000,
         },
         realmPath: 'commercial-banking',
         clientId: 'WebMerchantApp',
-        redirectUri: 'http://cbonline.lloyds.com:3000/callback',
+        redirectUri: 'https://cbonline.lloyds.com:3000/callback',
         scope: 'openid profile email',
         tree: 'Login',
     });
@@ -25,11 +25,9 @@ export const forgerockService = {
     async login(username?: string, password?: string) {
         try {
             const step = await FRAuth.next();
-
             if (step.type !== 'Step') {
                 return step;
             }
-
             step.callbacks.forEach((callback: any) => {
                 if (callback.getType() === 'NameCallback' && username) {
                     callback.setName(username);
@@ -38,7 +36,6 @@ export const forgerockService = {
                     callback.setPassword(password);
                 }
             });
-
             return await FRAuth.next(step as FRStep);
         } catch (err) {
             console.error('ForgeRock Login Error:', err);
@@ -57,14 +54,14 @@ export const forgerockService = {
 
     async getUserInfo() {
         try {
-            const tokens = await TokenManager.getTokens();
-
-            if (!tokens) {
-                throw new Error('No active session');
-            }
+            // Read from localStorage — never call TokenManager.getTokens()
+            // which triggers getAuthCodeByIframe and causes redirect loops
+            const stored = localStorage.getItem('FR-SDK-WebMerchantApp');
+            if (!stored) throw new Error('No tokens in storage');
+            const tokens = JSON.parse(stored);
+            if (!tokens?.accessToken) throw new Error('No access token');
 
             const user: any = await UserManager.getCurrentUser();
-
             return {
                 userId: user.sub,
                 username: user.preferred_username || user.name,
@@ -81,8 +78,6 @@ export const forgerockService = {
         }
     },
 
-    // Silent logout — clears AM session in background, no redirect
-    // Used on login page load to clear any existing session
     async logoutSilent(): Promise<void> {
         try {
             await FRUser.logout();
@@ -91,28 +86,50 @@ export const forgerockService = {
         }
     },
 
-    // Full logout — clears AM session then redirects to login page
-    // Used when session timer expires or user explicitly logs out
     async logout(): Promise<void> {
         try {
             await FRUser.logout();
         } catch (err) {
             // Ignore errors
         } finally {
-            window.location.href = 'http://cbonline.lloyds.com:3000/PrimaryAuth';
+            window.location.href = 'https://cbonline.lloyds.com:3000/PrimaryAuth';
         }
+    },
+
+    async getAccessToken(): Promise<string | null> {
+        try {
+            // Read directly from localStorage — no SDK call that could trigger redirect
+            const stored = localStorage.getItem('FR-SDK-WebMerchantApp');
+            if (stored) {
+                const tokens = JSON.parse(stored);
+                if (tokens?.accessToken) {
+                    return tokens.accessToken;
+                }
+            }
+            return null;
+        } catch (err) {
+            console.error('getAccessToken failed:', err);
+            return null;
+        }
+    },
+
+    async getAuthHeaders(): Promise<Record<string, string>> {
+        const token = await forgerockService.getAccessToken();
+        if (token) {
+            return { Authorization: `Bearer ${token}` };
+        }
+        return {};
     },
 
     async isSystemOnline(): Promise<boolean> {
         try {
             const response = await fetch(
-                'http://openam.lloyds.com:8080/openam/json/serverinfo/*',
+                'https://cbonline.lloyds.com:3000/openam/json/serverinfo/*',
                 {
                     method: 'GET',
                     mode: 'cors',
                 }
             );
-
             return response.status === 200 || response.status === 401;
         } catch (err) {
             console.warn('ForgeRock server unreachable:', err);

@@ -1,15 +1,15 @@
 {
   "name": "02-protected-app",
-  "comment": "Session-protected proxy to the React app. Validates iPlanetDirectoryPro cookie via AM; redirects to /login on failure.",
-  "condition": "${not matches(request.uri.path, '^/api/') and not matches(request.uri.path, '^/openam/')}",
-  "baseURI": "http://cbonline.lloyds.com:3000/PrimaryAuth",
+  "comment": "Session-protected proxy to the React app.",
+  "condition": "${not find(request.uri.path, '^/api/') and not find(request.uri.path, '^/openam/')}",
+  "baseURI": "http://cbonline.lloyds.com:3000",
   "heap": [],
   "handler": {
     "type": "Chain",
     "config": {
       "filters": [
         {
-          "type": "AmSessionFilter",
+          "type": "SingleSignOnFilter",
           "config": {
             "amService": "AmService-CBOAM",
             "failureHandler": {

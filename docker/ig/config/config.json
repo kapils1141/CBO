@@ -17,10 +17,12 @@
       "name": "AmService-CBOAM",
       "type": "AmService",
       "config": {
-        "url": "http://am:8080/openam",
+        "url": "http://openam.lloyds.com:8080/openam",
         "realm": "/commercial-banking",
-        "agentUsername": "ig-agent",
-        "agentPasswordSecretId": "agent.secret.id",
+        "agent": {
+          "username": "ig-agent",
+          "passwordSecretId": "agent.secret.id"
+        },
         "secretsProvider": "SystemAndEnvSecretStore",
         "sessionCache": {
           "enabled": true,
@@ -32,10 +34,16 @@
       "name": "AmJwkSetSecretStore",
       "type": "JwkSetSecretStore",
       "config": {
-        "jwkUrl": "http://am:8080/openam/oauth2/commercial-banking/connect/jwk_uri",
+        "jwkUrl": "http://openam.lloyds.com:8080/openam/oauth2/commercial-banking/connect/jwk_uri",
         "handler": "ClientHandler",
         "secretsQueryInterval": "5 minutes"
       }
     }
-  ]
+  ],
+  "handler": {
+    "type": "Router",
+    "config": {
+      "directory": "${openig.configDirectory}/routes"
+    }
+  }
 }
